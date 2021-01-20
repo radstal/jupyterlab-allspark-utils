@@ -1,33 +1,46 @@
 # FROM jupyter/all-spark-notebook
 FROM jupyter/all-spark-notebook
+# FROM ubuntu:16.04
 
 USER root
-RUN apt-get update -y
-RUN apt-get install -y build-essential unzip python-dev libaio-dev npm
+
+# apt-get and system utilities
+RUN apt-get update -y && apt-get install -y \
+    curl apt-utils apt-transport-https debconf-utils gcc build-essential gdebi g++ software-properties-common libodbc1 unzip\
+    && rm -rf /var/lib/apt/lists/*
+RUN add-apt-repository ppa:xapienz/curl34
+RUN apt install -y libcurl3
+RUN wget http://archive.ubuntu.com/ubuntu/pool/main/g/glibc/multiarch-support_2.27-3ubuntu1.4_amd64.deb
+RUN apt-get install ./multiarch-support_2.27-3ubuntu1.4_amd64.deb
+# adding custom MS repository
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+RUN curl https://packages.microsoft.com/config/ubuntu/16.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
+
+# install SQL Server drivers
+RUN apt-get update && ACCEPT_EULA=Y apt-get install -y msodbcsql unixodbc-dev=2.3.7 unixodbc=2.3.7 odbcinst1debian2=2.3.7 
+
+# install SQL Server tools
+RUN apt-get update && ACCEPT_EULA=Y apt-get install -y mssql-tools
+RUN echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+RUN /bin/bash -c "source ~/.bashrc"
+
+# RUN apt-get install -y build-essential unzip python-dev libaio-dev npm gnupg2 gnupg gnupg1 ca-certificates
 RUN jupyter labextension install @jupyterlab/debugger
 RUN conda install xeus-python -c conda-forge
-RUN wget --no-check-certificate https://download.oracle.com/otn_software/linux/instantclient/211000/instantclient-basic-linux.x64-21.1.0.0.0.zip
-RUN wget --no-check-certificate https://download.oracle.com/otn_software/linux/instantclient/211000/instantclient-sdk-linux.x64-21.1.0.0.0.zip
+
+RUN curl https://download.oracle.com/otn_software/linux/instantclient/199000/instantclient-basic-linux.x64-19.9.0.0.0dbru.zip > oracle.zip
+RUN unzip oracle.zip
+RUN apt install libaio1
+RUN sh -c "echo /home/jovyan/instantclient_19_9/instantclient_19_9 > /etc/ld.so.conf.d/oracle-instantclient.conf"
+RUN ldconfig
+RUN export LD_LIBRARY_PATH=/home/jovyan/instantclient_19_9
 
 USER $NB_UID
 RUN pip install mlflow boto3
 RUN pip install petl
-RUN pip install torch==1.6.0+cpu torchvision==0.7.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
-RUN conda config --set ssl_verify no
+RUN pip install robotframework
 RUN conda update -n base conda
-
-#oracle connect stub source at https://gist.github.com/kimus/10012910
-USER root
-RUN unzip instantclient-basic-linux* 
-RUN unzip instantclient-sdk-linux*
-#COPY ./bashrc_addon.txt /
-# RUN cat /bashrc_addon.txt > /home/jovyan/.bashrc
-# RUN cat /bashrc_addon.txt > /root/.bashrc
-
-RUN ldconfig
-#cleanup
-#RUN rm  instantclient-basic-linux*.zip instantclient-sdk-linux*.zip /bashrc_addon.txt
-
-USER $NB_UID
-RUN pip install cx_oracle
-ENV LD_LIBRARY_PATH=/home/jovyan/instantclient_21_1
+RUN conda install -c anaconda pyodbc unixodbc cx_oracle
+RUN pip install ntlm-auth
+RUN pip install python-ntlm
+CMD [ "jupyter",  "notebook", "--ip='*'", "--NotebookApp.token=''", "--NotebookApp.password=''" ]
